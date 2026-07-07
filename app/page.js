@@ -117,7 +117,7 @@ export default function Home() {
       const res = await fetch('/api/playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, input: inputValue }),
+        body: JSON.stringify({ source, input: inputValue, stages }),
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -680,13 +680,17 @@ export default function Home() {
                             {getStatusLabel(video.status)}
                           </span>
                         </div>
-                        {video.chunks && video.chunks.length > 0 && (
+                        {video.chunks && video.chunks.length > 0 ? (
                           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                             {jobDidTranscribe
                               ? `${video.chunks.filter(c => c.status === 'completed').length}/${video.chunks.length} parts`
                               : `${video.chunks.length} chunk${video.chunks.length === 1 ? '' : 's'}`}
                           </span>
-                        )}
+                        ) : video.chunkCount ? (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            {video.chunkCount} chunk{video.chunkCount === 1 ? '' : 's'}
+                          </span>
+                        ) : null}
                       </div>
                       {video.error && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--error)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import path from 'path';
 import { JobManager } from '@/lib/jobManager';
 
 const execFileAsync = promisify(execFile);
@@ -11,6 +10,7 @@ export async function POST(request) {
     const body = await request.json();
     const source = body.source === 'local' ? 'local' : 'youtube';
     const input = (body.input ?? body.url ?? '').trim();
+    const stages = { split: !!body.stages?.split, transcribe: !!body.stages?.transcribe };
 
     if (!input) {
       return NextResponse.json(
@@ -19,22 +19,26 @@ export async function POST(request) {
       );
     }
 
-    // ---- Local preview: list the .mp3 files that would be processed ----
+    // ---- Local preview: show the recordings/items that would be processed ----
     if (source === 'local') {
       try {
-        const { files, baseLabel } = JobManager.listLocalMp3s(input);
-        if (files.length === 0) {
+        // Preview uses transcribe-style grouping by default so nested chunk
+        // folders are visible; split mode lists full recordings instead.
+        const previewStages = stages.split && !stages.transcribe ? { split: true } : { split: false, transcribe: true };
+        const { items, baseLabel } = JobManager.discoverLocalItems(input, previewStages);
+        if (items.length === 0) {
           return NextResponse.json({ error: 'No .mp3 files found at that path.' }, { status: 404 });
         }
         return NextResponse.json({
           title: baseLabel,
-          isPlaylist: files.length > 1,
+          isPlaylist: items.length > 1,
           source: 'local',
-          videos: files.map((f, idx) => ({
+          videos: items.map((it, idx) => ({
             id: `local_${idx}`,
-            title: path.basename(f),
-            url: f,
+            title: it.title,
+            url: it.localPath || it.dir || '',
             duration: 0,
+            chunkCount: it.files ? it.files.length : 0,
           })),
         });
       } catch (err) {
