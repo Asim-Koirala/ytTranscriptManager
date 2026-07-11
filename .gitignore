@@ -19,6 +19,9 @@
 /output
 /trial
 
+# pending Gemini batch jobs (resume state)
+/.pending-batches
+
 # production
 /build
 

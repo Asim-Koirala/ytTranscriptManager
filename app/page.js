@@ -7,6 +7,7 @@ export default function Home() {
   const [playlistUrl, setPlaylistUrl] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [stages, setStages] = useState({ split: true, transcribe: true });
+  const [useBatch, setUseBatch] = useState(false); // use Gemini Batch API (cheaper, async)
   const [chunkDuration, setChunkDuration] = useState('10'); // in minutes
   const [apiKey, setApiKey] = useState('');
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
@@ -15,6 +16,7 @@ export default function Home() {
   const [jobStatus, setJobStatus] = useState(null);
   const [selectedVideoId, setSelectedVideoId] = useState(null);
   const [error, setError] = useState('');
+  const [resumeNotice, setResumeNotice] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -23,10 +25,33 @@ export default function Home() {
   const inputValue = source === 'youtube' ? playlistUrl : localPath;
   const setInputValue = source === 'youtube' ? setPlaylistUrl : setLocalPath;
 
-  // Load API key from local storage on mount
+  // Load API key from local storage on mount, then ask the server to resume
+  // any batch transcription jobs left unfinished by a previous run.
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
+    const savedKey = localStorage.getItem('gemini_api_key') || '';
     if (savedKey) setApiKey(savedKey);
+
+    fetch('/api/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: savedKey }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data || !data.pending) return;
+        if (data.resuming > 0) {
+          setResumeNotice(
+            `Resuming ${data.resuming} unfinished batch transcription${data.resuming === 1 ? '' : 's'} in the background. ` +
+            `Transcript files will appear under output/ once Google finishes — keep this server running.`
+          );
+        } else if (data.needKey) {
+          setResumeNotice(
+            `${data.pending} unfinished batch transcription${data.pending === 1 ? '' : 's'} found from a previous run, ` +
+            `but no API key is available to collect them. Enter your Gemini API key to resume.`
+          );
+        }
+      })
+      .catch(() => { /* resume is best-effort; ignore errors */ });
   }, []);
 
   const handleApiKeyChange = (val) => {
@@ -152,6 +177,7 @@ export default function Home() {
           input: inputValue,
           apiKey,
           stages,
+          useBatch: stages.transcribe && useBatch,
           chunkDuration: parseFloat(chunkDuration) * 60, // minutes -> seconds
         }),
       });
@@ -359,6 +385,17 @@ export default function Home() {
 
       <main style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '30px' }}>
 
+        {/* Resume notice — batches recovered from a previous run */}
+        {resumeNotice && (
+          <div style={{ padding: '16px', backgroundColor: 'rgba(6, 182, 212, 0.1)', border: '1px solid var(--secondary, #06b6d4)', borderRadius: '8px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span style={{ fontWeight: '500' }}>{resumeNotice}</span>
+            <button onClick={() => setResumeNotice('')} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>×</button>
+          </div>
+        )}
+
         {/* Error Alert */}
         {error && (
           <div style={{ padding: '16px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--error)', borderRadius: '8px', color: 'var(--error)', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -514,6 +551,47 @@ export default function Home() {
                     </button>
                   </div>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Get a free key from Google AI Studio. Stored locally in your browser.</span>
+                </div>
+              )}
+
+              {/* Batch API toggle — only meaningful when transcribing */}
+              {stages.transcribe && (
+                <div className="input-group">
+                  <label className="input-label">Transcription Mode</label>
+                  <button
+                    type="button"
+                    onClick={() => setUseBatch((v) => !v)}
+                    disabled={processing}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', textAlign: 'left',
+                      borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer', width: '100%',
+                      background: useBatch ? 'rgba(6, 182, 212, 0.14)' : 'rgba(0,0,0,0.25)',
+                      border: `1px solid ${useBatch ? 'var(--secondary, #06b6d4)' : 'var(--border-glass)'}`,
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <span style={{
+                      width: '38px', height: '20px', borderRadius: '10px', flexShrink: 0, position: 'relative',
+                      background: useBatch ? 'var(--secondary, #06b6d4)' : 'rgba(255,255,255,0.15)',
+                      transition: 'all 0.2s ease',
+                    }}>
+                      <span style={{
+                        position: 'absolute', top: '2px', left: useBatch ? '20px' : '2px',
+                        width: '16px', height: '16px', borderRadius: '50%', background: '#fff',
+                        transition: 'all 0.2s ease',
+                      }} />
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        Batch API {useBatch ? '— On' : '— Off'}
+                      </span>
+                      <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                        {useBatch
+                          ? 'Chunks are submitted as one async batch job (~50% cheaper, but higher latency).'
+                          : 'Chunks are transcribed one at a time, in real time.'}
+                      </span>
+                    </span>
+                  </button>
                 </div>
               )}
 

@@ -12,6 +12,7 @@ export async function POST(request) {
       transcribe: !!body.stages?.transcribe,
     };
     const chunkDuration = Number(body.chunkDuration) || 600;
+    const useBatch = !!body.useBatch;
 
     if (!input) {
       return NextResponse.json(
@@ -35,9 +36,9 @@ export async function POST(request) {
       );
     }
 
-    const jobId = JobManager.createJob({ source, input, apiKey, stages, chunkDuration });
+    const jobId = JobManager.createJob({ source, input, apiKey, stages, chunkDuration, useBatch });
 
-    console.log(`[API Process] Job ${jobId} started (source=${source}, split=${stages.split}, transcribe=${stages.transcribe}, chunk=${chunkDuration}s)`);
+    console.log(`[API Process] Job ${jobId} started (source=${source}, split=${stages.split}, transcribe=${stages.transcribe}, chunk=${chunkDuration}s, batch=${useBatch})`);
     return NextResponse.json({ jobId });
   } catch (err) {
     console.error('[API Process] Error starting job:', err);
